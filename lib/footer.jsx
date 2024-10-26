@@ -37,7 +37,7 @@ export default function Footer(props) {
           <Link href="/our-history">Our History</Link>
           <Link href="/our-vision">Our Vision</Link>
         </p>
-        <p>&copy; 2023 Fake Adoption Center. All rights reserved.</p>
+        <p>&copy; 2024 Fake Adoption Center. All rights reserved.</p>
       </footer>
     </>
   )
