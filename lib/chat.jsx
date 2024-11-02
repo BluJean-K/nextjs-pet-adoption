@@ -1,19 +1,75 @@
-import { useState } from "react"
+import Pusher from "pusher-js"
+import { useState, useEffect, useRef } from "react"
 
 export default function Chat() {
-    const [isChatOpen, setIsChatOpen] = useState(false)  // isChatOpen State is used to set className on chat-container
+    const [isChatOpen, setIsChatOpen] = useState(false)  // used to set className on chat-container
+    const [unreadCount, setUnreadCount] = useState(0)  // used on chat-unread-badge span
+    const [socketId, setSocketId] = useState()        // Pusher socket_id
+    const [messageLog, setMessageLog]  = useState([]) // array of all messages
+    const [userMessage, setUserMessage] = useState("") // used in handleInputChange and handleChatSubmit
+    const chatField = useRef(null) // used on input in chat form
+    const chatLogElement = useRef(null) // used to target chat log div and scroll messages
 
+    // connect to Pusher on launch
+    useEffect(() => {
+        const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHERKEY, {
+            cluster: 'us2'
+        })
+
+        pusher.connection.bind("connected", () => {
+            setSocketId(pusher.connection.socket_id)
+        })
+
+        const channel = pusher.subscribe("private-petchat")
+        channel.bind("message", data => {
+            setMessageLog(prev => [...prev, data])  // destructure array, create new array
+        })
+    }, [])
+
+    // watch for changes of messageLog. Scroll to bottom of chat log. Increment unreadCount.
+    useEffect(() => {
+        if(messageLog.length) {
+            chatLogElement.current.scrollTop = chatLogElement.current.scrollHeight
+            if(!isChatOpen) {
+                setUnreadCount(prev => prev + 1)
+            }
+        }
+    }, [messageLog])
+    
     function openChatClick() {
-        setIsChatOpen(true)    
+        setIsChatOpen(true)
+        setUnreadCount(0)
+        setTimeout(() => {
+            chatField.current.focus()
+        }, 350)
     }
 
     function closeChatClick() {
         setIsChatOpen(false)
     }
+
+    function handleInputChange(e) {
+        setUserMessage(e.target.value.trim())
+    }
+
+    function handleChatSubmit(e) {
+        e.preventDefault()
+        fetch("/admin/send-chat", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({message: userMessage, socket_id: socketId})
+        })
+        setMessageLog(prev => [...prev, {selfMessage: true, message: userMessage}])
+        setUserMessage("")
+    }
     
     return (
         <>
-            <div className="open-chat" onClick={openChatClick}><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor" className="bi bi-chat-text-fill" viewBox="0 0 16 16">
+            <div className="open-chat" onClick={openChatClick}>
+                {unreadCount > 0 && <span className="chat-unread-badge">{unreadCount}</span>}
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor" className="bi bi-chat-text-fill" viewBox="0 0 16 16">
             <path d="M16 8c0 3.866-3.582 7-8 7a9 9 0 0 1-2.347-.306c-.584.296-1.925.864-4.181 1.234-.2.032-.352-.176-.273-.362.354-.836.674-1.95.77-2.966C.744 11.37 0 9.76 0 8c0-3.866 3.582-7 8-7s8 3.134 8 7M4.5 5a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2.5a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2.5a.5.5 0 0 0 0 1h4a.5.5 0 0 0 0-1z"/>
             </svg></div>
                 <div className={isChatOpen ? "chat-container chat-container--visible" : "chat-container"}>
@@ -23,28 +79,20 @@ export default function Chat() {
                 <path d="M2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2zm3.354 4.646L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 1 1 .708-.708"/>
                 </svg>
                 </div>
-                <div className="chat-log">
-                <div className="chat-message">
-                    <div className="chat-message-inner">
-                    Hey Bobbette, We need to reach out to the new Purrsloud contact
-                    </div></div>
-                    <div className="chat-message">
-                        <div className="chat-message-inner">
-                        Can you do that this afternoon?
-                        </div></div>
-                    <div className="chat-message chat-message--self">
-                        <div className="chat-message-inner">
-                        Sure, will do!
-                        </div>
-                    </div>
-                    <div className="chat-message chat-message--self">
-                        <div className="chat-message-inner">
-                        Lorem ipsum dolor sit amet consectetur adipisicing elit. Laudantium dolore, maxime voluptates reiciendis eos veniam ratione voluptatum? Architecto quod molestiae voluptatibus excepturi ratione ex sed voluptatum alias, delectus culpa dignissimos?
-                        </div>
-                    </div>
+
+                <div ref={chatLogElement} className="chat-log">
+                    {messageLog.map((item, index) => {
+                        return (
+                            <div key={index} className={item.selfMessage ? "chat-message chat-message--self" : "chat-message"} >
+                                <div className="chat-message-inner">
+                                    {item.message}
+                                </div>
+                            </div> 
+                        )
+                    })}
                 </div>
-            <form >
-              <input type="text" autoComplete="off" placeholder="Your Message Here" /></form>
+            <form onSubmit={handleChatSubmit} >
+              <input ref={chatField} value={userMessage} onChange={handleInputChange} type="text" autoComplete="off" placeholder="Your Message Here" /></form>
             </div>
         </>
     )
